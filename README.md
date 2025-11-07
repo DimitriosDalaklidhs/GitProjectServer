@@ -16,15 +16,7 @@ Multi-threaded client handling using `_beginthreadex`
 
 
 
-##  Project Structure
-GitProjectServer/
-├── GitProject.c # Main server source code
-├── Makefile.win # Build configuration for Dev-C++ or MinGW
-├── GitProject # Dev-C++ project file
-└── www/ # (optional) Folder for static HTML files
 
-
----
 
 ##  Build Instructions
 
