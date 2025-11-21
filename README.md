@@ -25,7 +25,7 @@ Multi-threaded client handling using `_beginthreadex`
 2. Press **F11** or click **Execute → Compile & Run**
 3. The output executable (e.g. `ProjectGitLab.exe`) will be generated in the project directory.
 
-> ⚠️ If you see Winsock linking errors, make sure your linker includes:
+>  If you see Winsock linking errors, make sure your linker includes:
 > ```
 > -lws2_32
 > ```
