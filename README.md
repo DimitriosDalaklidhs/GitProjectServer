@@ -59,6 +59,23 @@ _beginthreadex(NULL, 0, client_thread, a, 0, NULL);
 
 This ensures responsive performance even with multiple clients connected simultaneously.
 
+
+### Implementation Notes 
+
+Uses WSAStartup / WSACleanup and the WinSock2 API.
+
+Uses getaddrinfo with AF_UNSPEC and binds on:
+
+IPv6 with IPV6_V6ONLY = 0 to allow IPv4-mapped connections.
+
+Logging and fatal errors go through small helpers:
+
+warnx() for non-fatal logs
+
+die() for fatal errors (prints a message and calls ExitProcess(1)).
+
+http_date() returns a proper GMT date string in HTTP format, using a thread-safe wrapper on MinGW via CRITICAL_SECTION plus gmtime.
+
 License
 
 This project is licensed under the MIT License — free for personal and educational use.
