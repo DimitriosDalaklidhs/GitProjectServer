@@ -7,7 +7,7 @@ This lightweight project demonstrates how to handle multiple client connections 
 
 ##  Features
 Multi-threaded client handling using `_beginthreadex`
-  IPv4 & IPv6 dual-stack support (serves both `127.0.0.1` and `::1`)
+ IPv4 & IPv6 dual-stack support (serves both `127.0.0.1` and `::1`)
   Serves static files (e.g. `.html`, `.css`, `.js`, `.png`, etc.)
   Built-in `/hello` JSON route for testing
   Proper HTTP headers (date, content-type, connection)
