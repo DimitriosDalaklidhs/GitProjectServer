@@ -37,10 +37,13 @@ If you have MinGW installed, run:
 
 ```bash
 gcc GitProject.c -o GitProjectServer.exe -lws2_32 -std=c99
+```
+---
 Then launch the server with:
-
+```bash
 GitProjectServer.exe -p 8080 -r www
-
+```
+---
  USAGE:
 
 Once the server is running, open your browser and go to:
@@ -53,36 +56,34 @@ http://127.0.0.1:8080/hello
  Multithreading Model
 
 Each incoming connection is handled in a separate thread using:
-
+```C
 _beginthreadex(NULL, 0, client_thread, a, 0, NULL);
-
+```
 
 This ensures responsive performance even with multiple clients connected simultaneously.
 
 
 ### Implementation Notes 
 
-Uses WSAStartup / WSACleanup and the WinSock2 API.
+- Uses WSAStartup / WSACleanup and the WinSock2 API.
 
-Uses getaddrinfo with AF_UNSPEC and binds on:
+- Uses getaddrinfo with AF_UNSPEC and binds on IPv6 with IPV6_V6ONLY = 0 to allow IPv4-mapped connections.
 
-IPv6 with IPV6_V6ONLY = 0 to allow IPv4-mapped connections.
+- Logging and fatal errors go through small helpers:
 
-Logging and fatal errors go through small helpers:
+       1) warnx() for non-fatal logs
 
-warnx() for non-fatal logs
+       2) die() for fatal errors (prints a message and calls ExitProcess(1)).
 
-die() for fatal errors (prints a message and calls ExitProcess(1)).
-
-http_date() returns a proper GMT date string in HTTP format, using a thread-safe wrapper on MinGW via CRITICAL_SECTION plus gmtime.
-
-License
+- http_date() returns a proper GMT date string in HTTP format, using a thread-safe wrapper on MinGW via CRITICAL_SECTION plus gmtime.
+---
+# License
 
 This project is licensed under the MIT License — free for personal and educational use.
 
 
-
-Author
+---
+### Author
 
 Dimitrios Dalaklidis is an aspiring backend developer with a strong academic foundation in Informatics and hands-on experience in systems programming, data structures, and software architecture. His work reflects a methodical approach to problem solving, supported by practical exposure to multi-language development environments and structured programming disciplines. He has completed a range of projects involving low-level system operations in C, object-oriented application design in Java, browser-based scripting, and networked communication models.
 
