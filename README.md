@@ -1,98 +1,76 @@
-# GitProjectServer
+# Multithreaded HTTP Server in C (Winsock2)
 
-A **multithreaded HTTP server written in C** using **Winsock2** for Windows.  
-This lightweight project demonstrates how to handle multiple client connections concurrently using `_beginthreadex` and serve static files or dynamic JSON routes.
-
-
-
-##  Features
-Multi-threaded client handling using `_beginthreadex`
- IPv4 & IPv6 dual-stack support (serves both `127.0.0.1` and `::1`)
-  Serves static files (e.g. `.html`, `.css`, `.js`, `.png`, etc.)
-  Built-in `/hello` JSON route for testing
-  Proper HTTP headers (date, content-type, connection)
-  Simple directory listings when `index.html` is missing
-  Works fully offline on Windows
-
-
-
-
-
-##  Build Instructions
-
-###  Option 1 — Using Dev-C++ 5.11
-1. Open `GitProject.dev` in Dev-C++  
-2. Press **F11** or click **Execute → Compile & Run**
-3. The output executable (e.g. `ProjectGitLab.exe`) will be generated in the project directory.
-
->  If you see Winsock linking errors, make sure your linker includes:
-> ```
-> -lws2_32
-> ```
+A lightweight HTTP server written in C for Windows using the Winsock2 API. Handles multiple client connections concurrently, serves static files, and exposes a simple JSON route.
 
 ---
 
-###  Option 2 — Using Command Line (MinGW)
-If you have MinGW installed, run:
+## Features
 
+- Multi-threaded client handling via `_beginthreadex`
+- IPv4 & IPv6 dual-stack support (binds on both `127.0.0.1` and `::1`)
+- Static file serving (`.html`, `.css`, `.js`, `.png`, etc.)
+- Built-in `/hello` JSON route for testing
+- Proper HTTP response headers (date, content-type, connection)
+- Directory listing fallback when `index.html` is missing
+- Fully offline, no external dependencies
+
+---
+
+## Build
+
+**Command line (MinGW):**
 ```bash
 gcc GitProject.c -o GitProjectServer.exe -lws2_32 -std=c99
 ```
+
+**Dev-C++ 5.11:**  
+Open `GitProject.dev`, press **F11** or go to **Execute → Compile & Run**.  
+If you see Winsock linking errors, ensure your linker includes `-lws2_32`.
+
 ---
-Then launch the server with:
+
+## Usage
+
+Start the server:
 ```bash
 GitProjectServer.exe -p 8080 -r www
 ```
+
+Then open your browser:
+
+- `http://127.0.0.1:8080/` — serves `www/index.html`
+- `http://127.0.0.1:8080/hello` — returns `{ "message": "Hello World" }`
+
 ---
- USAGE:
 
-Once the server is running, open your browser and go to:
-http://127.0.0.1:8080/
- → serves www/index.html
+## Multithreading Model
 
+Each incoming connection is dispatched to a new thread:
 
-http://127.0.0.1:8080/hello
- → returns JSON: Hello World
- Multithreading Model
-
-Each incoming connection is handled in a separate thread using:
-```C
+```c
 _beginthreadex(NULL, 0, client_thread, a, 0, NULL);
 ```
 
-This ensures responsive performance even with multiple clients connected simultaneously.
-
-
-### Implementation Notes 
-
-- Uses WSAStartup / WSACleanup and the WinSock2 API.
-
-- Uses getaddrinfo with AF_UNSPEC and binds on IPv6 with IPV6_V6ONLY = 0 to allow IPv4-mapped connections.
-
-- Logging and fatal errors go through small helpers:
-
-       1) warnx() for non-fatal logs
-
-       2) die() for fatal errors (prints a message and calls ExitProcess(1)).
-
-- http_date() returns a proper GMT date string in HTTP format, using a thread-safe wrapper on MinGW via CRITICAL_SECTION plus gmtime.
----
-# License
-
-This project is licensed under the MIT License — free for personal and educational use.
-
+This keeps the main thread free to accept new connections while existing ones are being handled.
 
 ---
-### Author
 
-Dimitrios Dalaklidis is an aspiring backend developer with a strong academic foundation in Informatics and hands-on experience in systems programming, data structures, and software architecture. His work reflects a methodical approach to problem solving, supported by practical exposure to multi-language development environments and structured programming disciplines. He has completed a range of projects involving low-level system operations in C, object-oriented application design in Java, browser-based scripting, and networked communication models.
+## Implementation Notes
 
-His technical interests center on backend system design, algorithmic efficiency, and the construction of reliable, maintainable software. He actively pursues opportunities to expand his expertise through academically driven projects and independent research, with an emphasis on building robust systems that adhere to professional development practices and modern software engineering principles.
+- Uses `WSAStartup` / `WSACleanup` for Winsock lifecycle management
+- `getaddrinfo` with `AF_UNSPEC` and `IPV6_V6ONLY = 0` allows IPv4-mapped connections on an IPv6 socket
+- `warnx()` for non-fatal logging, `die()` for fatal errors (calls `ExitProcess(1)`)
+- `http_date()` returns a GMT date string in HTTP format using a thread-safe wrapper via `CRITICAL_SECTION` and `gmtime`
 
-For professional communication, he can be reached at: dalaklidesdemetres@gmail.com
+---
 
-Dimitrios Dalaklidhs
-Undergraduate Informatics student at the University of Western Macedonia
-Focused on low-level systems, algorithms, and C programming.
+## License
 
-GitHub: DimitriosDalaklidhs
+MIT — free for personal and educational use.
+
+---
+
+## Author
+
+**Dimitrios Dalaklidis** — CS student at the University of Western Macedonia, interested in backend development and systems programming.  
+📧 dalaklidesdemetres@gmail.com
