@@ -51,7 +51,7 @@ Each incoming connection is dispatched to a new thread:
 _beginthreadex(NULL, 0, client_thread, a, 0, NULL);
 ```
 
-This keeps the main thread free to accept new connections while existing ones are being handled.
+This keeps the main thread free so it accept new connections while existing ones are being handled.
 
 ---
 
