@@ -25,7 +25,7 @@ gcc GitProject.c -o GitProjectServer.exe -lws2_32 -std=c99
 
 **Dev-C++ 5.11:**  
 Open `GitProject.dev`, press **F11** or go to **Execute → Compile & Run**.  
-If you see Winsock linking errors, ensure your linker includes `-lws2_32`.
+If you see Winsock linking errors, make sure your linker includes `-lws2_32`.
 
 ---
 
