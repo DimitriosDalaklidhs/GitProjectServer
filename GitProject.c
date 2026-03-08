@@ -408,7 +408,6 @@ static SOCKET open_listen_dual(const char* port) {
     if (sfd == INVALID_SOCKET) die("could not bind to port %s", port);
     return sfd;
 }
-
 // ------------------------------------------------------------
 int main(int argc, char** argv) {
     const char* port = DEFAULT_PORT;
