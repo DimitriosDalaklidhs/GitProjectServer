@@ -19,12 +19,32 @@ A lightweight HTTP/1.1 server written in C for Windows using the Winsock2 API. H
 
 ---
 
+## Project Structure
+
+```
+GIT_HTTP_SERVER_WINDOWS/
+├── GitProject.c          # Server source code
+├── GitProjectServer.exe  # Compiled binary (after build)
+├── index.html            # Default page served at http://127.0.0.1:8080/
+└── Makefile.win          # Dev-C++ project makefile
+```
+
+**Note:** The server looks for `index.html` in whichever directory you pass to `-r`. If it is missing, the server will return a directory listing instead. To get started quickly, drop any `index.html` into the same folder as the executable and run:
+
+```bash
+./GitProjectServer.exe -p 8080 -r .
+```
+
+---
+
 ## Build
 
 **Command line (MinGW):**
 ```bash
-gcc websrv.c -o websrv.exe -lws2_32 -std=gnu11 -O2 -Wall -Wextra
+gcc GitProject.c -o GitProjectServer.exe -lws2_32 -std=gnu11 -O2 -Wall -Wextra
 ```
+
+> The `#pragma comment(lib, "Ws2_32.lib")` warning from MinGW is harmless — Winsock is linked correctly via `-lws2_32` on the command line.
 
 **Dev-C++ 5.11:**  
 Open the project file, press **F11** or go to **Execute → Compile & Run**.  
@@ -36,11 +56,11 @@ If you see Winsock linking errors, confirm your linker flags include `-lws2_32`.
 
 Start the server:
 ```bash
-websrv.exe -p 8080 -r www
+./GitProjectServer.exe -p 8080 -r .
 ```
 
 Then open your browser:
-- `http://127.0.0.1:8080/` — serves `www/index.html`
+- `http://127.0.0.1:8080/` — serves `index.html` from the specified directory
 - `http://127.0.0.1:8080/hello` — returns `{"message":"Hello from Windows HTTP Server!"}`
 - `http://127.0.0.1:8080/somedir/` — directory listing if no `index.html` present
 
