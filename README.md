@@ -63,6 +63,8 @@ This keeps the main thread free so it accept new connections while existing ones
 - `http_date()` returns a GMT date string in HTTP format using a thread-safe wrapper via `CRITICAL_SECTION` and `gmtime`
 
 ---
+**Future Upgrades:**
+- `Docker`
 
 ## License
 
