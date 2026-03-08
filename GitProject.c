@@ -145,7 +145,7 @@ static int recv_request(SOCKET s, char* buf, int bufsz) {
 static int safe_path(const char* joined, char* resolved, size_t resolvsz) {
     if (!_fullpath(resolved, joined, (int)resolvsz)) return -1;
 
-    // Both paths are now absolute; check prefix.
+    // Both paths are now absolute.
     size_t rootlen = strlen(g_docroot);
     if (strncmp(resolved, g_docroot, rootlen) != 0) return -1;
 
@@ -156,7 +156,6 @@ static int safe_path(const char* joined, char* resolved, size_t resolvsz) {
 
     return 0;
 }
-
 // ------------------------------------------------------------
 // HTTP helpers
 static void send_simple(SOCKET s, int code, const char* reason,
