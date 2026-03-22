@@ -1,5 +1,5 @@
 # Multithreaded HTTP Server in C (Winsock2)
-A lightweight HTTP/1.1 server written in C for Windows using the Winsock2 API. Handles multiple client connections concurrently, serves static files, and exposes a simple JSON route.
+An HTTP/1.1 server written in C for Windows using the Winsock2 API. Handles multiple client connections concurrently, serves static files, and exposes a simple JSON route.
 
 ---
 ## Features
