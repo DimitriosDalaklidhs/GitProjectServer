@@ -3,12 +3,12 @@ A lightweight HTTP/1.1 server written in C for Windows using the Winsock2 API. H
 
 ---
 ## Features
-- Multi-threaded client handling via `_beginthreadex` — socket passed directly per thread, no heap allocation per connection
+- Multi-threaded client handling via `_beginthreadex`: socket passed directly per thread, no heap allocation per connection
 - IPv4 & IPv6 dual-stack support (`IPV6_V6ONLY = 0` allows IPv4-mapped connections on an IPv6 socket)
 - Static file serving with MIME type detection (`.html`, `.css`, `.js`, `.json`, `.png`, `.jpg`, `.gif`, `.svg`, `.txt`)
 - Built-in `/hello` JSON route returning `{"message":"Hello from Windows HTTP Server!"}`
 - Directory listing with `Content-Length` when `index.html` is absent
-- Path traversal protection — requests escaping the docroot are rejected with 403
+- Path traversal protection: requests escaping the docroot are rejected with 403
 - Request logging to stdout: `[date] METHOD path -> status`
 - Recv timeout (10 s) to prevent hung clients from holding threads indefinitely
 - Query string stripping before filesystem resolution
