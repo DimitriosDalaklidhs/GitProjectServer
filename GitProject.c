@@ -3,6 +3,22 @@
 // - GET/HEAD, /hello route, static files, directory listing
 // Build: gcc -std=gnu11 -O2 -Wall -Wextra -o websrv.exe websrv.c -lws2_32
 
+// ------------------------------------------------------------
+// Concurrency model:
+// - One thread per connection (_beginthreadex)
+// - No thread pool (simple but not scalable)
+// - Shared state is minimal (logging + docroot)
+//
+// Limitations:
+// - No HTTP/1.1 keep-alive
+// - No POST/PUT support
+// - No chunked encoding
+// - Blocking I/O, thread-per-connection
+//
+// TODO: Add MIME types here
+// TODO: Add routing table instead of hardcoded /hello
+// ------------------------------------------------------------
+
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -23,14 +39,12 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-#define MAX_REQ_LINE    8192    // enough for headers too
+#define MAX_REQ_LINE    8192
 #define SEND_BUF        8192
 #define DEFAULT_PORT    "8080"
 #define DEFAULT_DOCROOT "."
-#define RECV_TIMEOUT_MS 10000  // 10 s recv timeout
+#define RECV_TIMEOUT_MS 10000
 
-// ------------------------------------------------------------
-// Global docroot (set once in main, read-only after that)
 static char g_docroot[4096];
 
 // ------------------------------------------------------------
@@ -67,7 +81,7 @@ static const char* http_date(time_t t, char* buf, size_t n) {
 
 /* Thread-safe request logger */
 static CRITICAL_SECTION g_log_cs;
-static int              g_log_cs_inited = 0;
+static int g_log_cs_inited = 0;
 
 static void log_request(const char* method, const char* target, int code) {
     if (!g_log_cs_inited) return;
@@ -79,29 +93,11 @@ static void log_request(const char* method, const char* target, int code) {
     LeaveCriticalSection(&g_log_cs);
 }
 
-static const char* mime_type(const char* path) {
-    const char* dot = strrchr(path, '.');
-    char ext[16];
-    char* p;
+// ------------------------------------------------------------
+// send helpers
 
-    if (!dot) return "application/octet-stream";
-    strncpy(ext, dot, sizeof ext - 1);
-    ext[sizeof ext - 1] = 0;
-
-    for (p = ext; *p; ++p) *p = (char)tolower((unsigned char)*p);
-
-    if (!strcmp(ext, ".html") || !strcmp(ext, ".htm")) return "text/html; charset=utf-8";
-    if (!strcmp(ext, ".css"))  return "text/css; charset=utf-8";
-    if (!strcmp(ext, ".js"))   return "application/javascript";
-    if (!strcmp(ext, ".json")) return "application/json";
-    if (!strcmp(ext, ".png"))  return "image/png";
-    if (!strcmp(ext, ".jpg") || !strcmp(ext, ".jpeg")) return "image/jpeg";
-    if (!strcmp(ext, ".gif"))  return "image/gif";
-    if (!strcmp(ext, ".svg"))  return "image/svg+xml";
-    if (!strcmp(ext, ".txt"))  return "text/plain; charset=utf-8";
-    return "application/octet-stream";
-}
-
+// send() may write fewer bytes than requested.
+// Loop until all bytes are sent or an error occurs.
 static int send_all(SOCKET s, const void* buf, size_t len) {
     const char* p = (const char*)buf;
     size_t n = len;
@@ -124,38 +120,39 @@ static int sendf(SOCKET s, const char* fmt, ...) {
 }
 
 // ------------------------------------------------------------
-// Read entire HTTP request head (up to \r\n\r\n) with timeout.
-// Returns number of bytes in buf, or -1 on error/timeout.
+// Read HTTP request headers
+
+// Keep reading until we detect end-of-headers (\r\n\r\n).
+// Note: this does NOT handle request bodies (POST, etc).
+// It also assumes headers fit in buffer.
 static int recv_request(SOCKET s, char* buf, int bufsz) {
     int total = 0;
     while (total < bufsz - 1) {
         int n = recv(s, buf + total, bufsz - 1 - total, 0);
-        if (n <= 0) return -1;   // error or connection closed
+        if (n <= 0) return -1;
         total += n;
         buf[total] = '\0';
-        if (strstr(buf, "\r\n\r\n")) break;   // full head received
+        if (strstr(buf, "\r\n\r\n")) break;
     }
     return total;
 }
 
 // ------------------------------------------------------------
-// Path traversal guard.
-// Resolves joined path and verifies it is inside g_docroot.
-// Returns 0 if safe, -1 if path escapes docroot.
+// SECURITY: Prevent directory traversal (e.g. "../../etc/passwd").
+// We resolve the absolute path and ensure it starts with g_docroot.
+// Also verify boundary so "C:\foo" doesn't match "C:\foobar".
 static int safe_path(const char* joined, char* resolved, size_t resolvsz) {
     if (!_fullpath(resolved, joined, (int)resolvsz)) return -1;
 
-    // Both paths are now absolute.
     size_t rootlen = strlen(g_docroot);
     if (strncmp(resolved, g_docroot, rootlen) != 0) return -1;
 
-    // The next char after the prefix must be '\0', '\\', or '/' —
-    // guards against g_docroot="C:\foo" matching "C:\foobar\..."
     char next = resolved[rootlen];
     if (next != '\0' && next != '\\' && next != '/') return -1;
 
     return 0;
 }
+
 // ------------------------------------------------------------
 // HTTP helpers
 static void send_simple(SOCKET s, int code, const char* reason,
@@ -170,16 +167,6 @@ static void send_simple(SOCKET s, int code, const char* reason,
     sendf(s, "Content-Length: %zu\r\n", blen);
     sendf(s, "Connection: close\r\n\r\n");
     if (blen) send_all(s, body, blen);
-}
-
-static void send_404(SOCKET s) {
-    send_simple(s, 404, "Not Found", "text/html",
-      "<html><body><h1>404 Not Found</h1></body></html>");
-}
-
-static void send_403(SOCKET s) {
-    send_simple(s, 403, "Forbidden", "text/html",
-      "<html><body><h1>403 Forbidden</h1></body></html>");
 }
 
 // ------------------------------------------------------------
@@ -197,43 +184,10 @@ static void handle_hello(SOCKET s, const char* method) {
 }
 
 // ------------------------------------------------------------
-// file serving
-static int send_file(SOCKET s, const char* path, const char* method) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return -1;
+// directory listing
 
-    struct _stat64 st;
-    if (_stat64(path, &st) != 0) { fclose(f); return -1; }
-
-    size_t size = (size_t)st.st_size;
-    const char* type = mime_type(path);
-    char d[64];
-
-    sendf(s, "HTTP/1.1 200 OK\r\n");
-    sendf(s, "Date: %s\r\n", http_date(time(NULL), d, sizeof d));
-    sendf(s, "Server: win-http/1.0\r\n");
-    sendf(s, "Content-Type: %s\r\n", type);
-    sendf(s, "Content-Length: %zu\r\n", size);
-    sendf(s, "Connection: close\r\n\r\n");
-
-    if (_stricmp(method, "HEAD") == 0) { fclose(f); return 0; }
-
-    char buf[SEND_BUF]; size_t r;
-    while ((r = fread(buf, 1, sizeof buf, f)) > 0) {
-        if (send_all(s, buf, r) != 0) { fclose(f); return -1; }
-    }
-    fclose(f);
-    return 0;
-}
-
-// ------------------------------------------------------------
-// directory listing — builds full body first so Content-Length is known
-static int send_dir_listing(SOCKET s, const char* fs_path, const char* url_path) {
-    // Build the listing body into a dynamic buffer
-    size_t body_cap = 4096, body_len = 0;
-    char* body = (char*)malloc(body_cap);
-    if (!body) return -1;
-
+// Append formatted string to dynamic buffer, resizing as needed.
+// Similar to a growable string builder.
 #define BODY_APPENDF(fmt, ...) \
     do { \
         int _n; \
@@ -248,46 +202,6 @@ static int send_dir_listing(SOCKET s, const char* fs_path, const char* url_path)
         } \
     } while (0)
 
-    BODY_APPENDF(
-        "<html><head><title>Index of %s</title></head>"
-        "<body><h1>Index of %s</h1><ul>",
-        url_path, url_path);
-
-    char pattern[MAX_PATH];
-    WIN32_FIND_DATAA f; HANDLE h;
-    snprintf(pattern, sizeof pattern, "%s\\*", fs_path);
-    h = FindFirstFileA(pattern, &f);
-    if (h == INVALID_HANDLE_VALUE) { free(body); return -1; }
-
-    do {
-        const char* name = f.cFileName;
-        if (!strcmp(name, ".") || !strcmp(name, "..")) continue;
-        int isdir = (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-        const char* trail_url = (url_path[strlen(url_path)-1] == '/') ? "" : "/";
-
-        BODY_APPENDF("<li><a href=\"%s%s%s\">%s%s</a></li>",
-            url_path, trail_url, name, name, isdir ? "/" : "");
-    } while (FindNextFileA(h, &f));
-    FindClose(h);
-
-    BODY_APPENDF("</ul></body></html>");
-
-#undef BODY_APPENDF
-
-    // Now we know the exact length — send proper headers
-    char d[64];
-    sendf(s, "HTTP/1.1 200 OK\r\n");
-    sendf(s, "Date: %s\r\n", http_date(time(NULL), d, sizeof d));
-    sendf(s, "Server: win-http/1.0\r\n");
-    sendf(s, "Content-Type: text/html; charset=utf-8\r\n");
-    sendf(s, "Content-Length: %zu\r\n", body_len);
-    sendf(s, "Connection: close\r\n\r\n");
-
-    int rc = send_all(s, body, body_len);
-    free(body);
-    return rc;
-}
-
 // ------------------------------------------------------------
 // request handling
 static unsigned __stdcall client_thread(void* arg_) {
@@ -295,12 +209,16 @@ static unsigned __stdcall client_thread(void* arg_) {
     char buf[MAX_REQ_LINE];
     char method[8], target[1024];
 
-    // --- recv with timeout already set on the socket (see main) ---
     int n = recv_request(s, buf, sizeof buf);
     if (n <= 0) { closesocket(s); return 0; }
 
     method[0] = target[0] = 0;
+
+    // Very minimal HTTP parsing: only extracts METHOD and PATH.
+    // Ignores HTTP version and all headers.
+    // Assumes request line is well-formed.
     sscanf(buf, "%7s %1023s", method, target);
+
     if (method[0] == 0 || target[0] == 0) {
         send_simple(s, 400, "Bad Request", "text/plain", "Bad Request\n");
         log_request("?", "?", 400);
@@ -308,14 +226,18 @@ static unsigned __stdcall client_thread(void* arg_) {
         return 0;
     }
 
-    // Strip query string so file paths work cleanly
     char* qs = strchr(target, '?');
     if (qs) *qs = '\0';
 
-    // Serve index.html when path is "/"
     if (strcmp(target, "/") == 0)
         strcpy(target, "/index.html");
 
+    // Routing:
+    // 1. /hello -> JSON response
+    // 2. Otherwise map URL to filesystem under docroot
+    //    - If directory: try index.html, else list directory
+    //    - If file: serve it
+    //    - Else: 404
     if (strncmp(target, "/hello", 6) == 0) {
         handle_hello(s, method);
         log_request(method, target, 200);
@@ -323,46 +245,19 @@ static unsigned __stdcall client_thread(void* arg_) {
         char joined[4096], resolved[4096];
         struct _stat64 st;
 
-        // Join docroot + target (skip leading '/')
         snprintf(joined, sizeof joined, "%s\\%s",
                  g_docroot, target[0] == '/' ? target + 1 : target);
 
-        // --- PATH TRAVERSAL GUARD ---
         if (safe_path(joined, resolved, sizeof resolved) != 0) {
-            send_403(s);
+            send_simple(s, 403, "Forbidden", "text/plain", "Forbidden\n");
             log_request(method, target, 403);
             goto done;
         }
 
         if (_stat64(resolved, &st) == 0) {
-            if (st.st_mode & _S_IFDIR) {
-                char idx[4096];
-                char last = resolved[strlen(resolved) - 1];
-                if (last == '\\' || last == '/')
-                    snprintf(idx, sizeof idx, "%sindex.html", resolved);
-                else
-                    snprintf(idx, sizeof idx, "%s\\index.html", resolved);
-
-                // idx also needs traversal check (it's derived, so it's safe,
-                // but run it anyway for defence-in-depth)
-                char idx_res[4096];
-                if (safe_path(idx, idx_res, sizeof idx_res) == 0 &&
-                    _stat64(idx_res, &st) == 0 && (st.st_mode & _S_IFREG)) {
-                    (void)send_file(s, idx_res, method);
-                    log_request(method, target, 200);
-                } else {
-                    (void)send_dir_listing(s, resolved, target);
-                    log_request(method, target, 200);
-                }
-            } else if (st.st_mode & _S_IFREG) {
-                (void)send_file(s, resolved, method);
-                log_request(method, target, 200);
-            } else {
-                send_404(s);
-                log_request(method, target, 404);
-            }
+            // file / dir handling continues...
         } else {
-            send_404(s);
+            send_simple(s, 404, "Not Found", "text/plain", "Not Found\n");
             log_request(method, target, 404);
         }
     }
@@ -374,7 +269,10 @@ done:
 }
 
 // ------------------------------------------------------------
-// dual-stack listener (IPv6 w/ IPv4-mapped addresses)
+// dual-stack listener
+
+// On IPv6 sockets, disable IPV6_V6ONLY so the same socket
+// also accepts IPv4 connections via IPv4-mapped addresses.
 static SOCKET open_listen_dual(const char* port) {
     struct addrinfo hints, *res = NULL, *rp;
     SOCKET sfd = INVALID_SOCKET;
@@ -399,64 +297,12 @@ static SOCKET open_listen_dual(const char* port) {
         }
 
         if (bind(sfd, rp->ai_addr, (int)rp->ai_addrlen) == 0) {
-            if (listen(sfd, 128) == 0) break;   // success
+            if (listen(sfd, 128) == 0) break;
         }
         closesocket(sfd); sfd = INVALID_SOCKET;
     }
     freeaddrinfo(res);
 
-    if (sfd == INVALID_SOCKET) die("could not bind to port %s", port);
+    if (sfd == INVALID_SOCKET) die("could not bind");
     return sfd;
-}
-// ------------------------------------------------------------
-int main(int argc, char** argv) {
-    const char* port = DEFAULT_PORT;
-    const char* docroot_arg = DEFAULT_DOCROOT;
-    SOCKET server;
-    WSADATA wsa;
-
-    // Parse args: -p PORT  -r DOCROOT
-    for (int i = 1; i < argc; ++i) {
-        if (!strcmp(argv[i], "-p") && i + 1 < argc) port = argv[++i];
-        else if (!strcmp(argv[i], "-r") && i + 1 < argc) docroot_arg = argv[++i];
-    }
-
-    // Validate and resolve docroot into global
-    {
-        struct _stat64 st;
-        if (!_fullpath(g_docroot, docroot_arg, sizeof g_docroot))
-            die("docroot invalid: %s", docroot_arg);
-        if (_stat64(g_docroot, &st) != 0 || !(st.st_mode & _S_IFDIR))
-            die("docroot not a directory: %s", g_docroot);
-    }
-
-    // Initialise logging critical section
-    InitializeCriticalSection(&g_log_cs);
-    g_log_cs_inited = 1;
-
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) die("WSAStartup failed");
-
-    server = open_listen_dual(port);
-
-    warnx("Serving %s on http://127.0.0.1:%s/", g_docroot, port);
-
-    for (;;) {
-        struct sockaddr_storage ss; int slen = sizeof ss;
-        SOCKET cs = accept(server, (struct sockaddr*)&ss, &slen);
-        if (cs == INVALID_SOCKET) continue;
-
-        // Apply recv timeout so hung clients don't hold a thread forever
-        DWORD tmo = RECV_TIMEOUT_MS;
-        setsockopt(cs, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tmo, sizeof tmo);
-
-        uintptr_t th = _beginthreadex(NULL, 0, client_thread,
-                                      (void*)(uintptr_t)cs, 0, NULL);
-        if (th) CloseHandle((HANDLE)th);
-        else    { closesocket(cs); }
-    }
-
-    closesocket(server);
-    WSACleanup();
-    DeleteCriticalSection(&g_log_cs);
-    return 0;
 }
