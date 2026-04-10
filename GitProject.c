@@ -47,7 +47,6 @@
 
 static char g_docroot[4096];
 
-// ------------------------------------------------------------
 // utils
 static void die(const char* fmt, ...) {
     va_list ap; va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
@@ -93,7 +92,7 @@ static void log_request(const char* method, const char* target, int code) {
     LeaveCriticalSection(&g_log_cs);
 }
 
-// ------------------------------------------------------------
+
 // send helpers
 
 // send() may write fewer bytes than requested.
@@ -119,7 +118,7 @@ static int sendf(SOCKET s, const char* fmt, ...) {
     return send_all(s, buf, (size_t)n);
 }
 
-// ------------------------------------------------------------
+
 // Read HTTP request headers
 
 // Keep reading until we detect end-of-headers (\r\n\r\n).
@@ -137,7 +136,7 @@ static int recv_request(SOCKET s, char* buf, int bufsz) {
     return total;
 }
 
-// ------------------------------------------------------------
+
 // SECURITY: Prevent directory traversal (e.g. "../../etc/passwd").
 // We resolve the absolute path and ensure it starts with g_docroot.
 // Also verify boundary so "C:\foo" doesn't match "C:\foobar".
@@ -153,7 +152,7 @@ static int safe_path(const char* joined, char* resolved, size_t resolvsz) {
     return 0;
 }
 
-// ------------------------------------------------------------
+
 // HTTP helpers
 static void send_simple(SOCKET s, int code, const char* reason,
                         const char* type, const char* body)
@@ -169,7 +168,7 @@ static void send_simple(SOCKET s, int code, const char* reason,
     if (blen) send_all(s, body, blen);
 }
 
-// ------------------------------------------------------------
+
 // route: /hello
 static void handle_hello(SOCKET s, const char* method) {
     const char* msg = "{\"message\":\"Hello from Windows HTTP Server!\"}\n";
@@ -183,7 +182,7 @@ static void handle_hello(SOCKET s, const char* method) {
     if (_stricmp(method, "HEAD") != 0) send_all(s, msg, strlen(msg));
 }
 
-// ------------------------------------------------------------
+
 // directory listing
 
 // Append formatted string to dynamic buffer, resizing as needed.
@@ -202,7 +201,7 @@ static void handle_hello(SOCKET s, const char* method) {
         } \
     } while (0)
 
-// ------------------------------------------------------------
+
 // request handling
 static unsigned __stdcall client_thread(void* arg_) {
     SOCKET s = (SOCKET)(uintptr_t)arg_;
@@ -268,7 +267,7 @@ done:
     return 0;
 }
 
-// ------------------------------------------------------------
+
 // dual-stack listener
 
 // On IPv6 sockets, disable IPV6_V6ONLY so the same socket
